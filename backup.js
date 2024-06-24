@@ -1,5 +1,8 @@
 import { spawn } from "child_process";
 import { format } from "date-fns";
+import { createReadStream, createWriteStream } from "fs";
+import { pipeline } from "stream";
+import { createGzip } from "zlib";
 
 const dbName = "movies.db";
 
@@ -11,8 +14,9 @@ const backupDatabase = async () => {
   return new Promise((resolve, reject) => {
     const currentDateTime = getFormattedDateTime();
     const backupFileName = `./backup-${currentDateTime}.sqlite`;
+    const gzipFileName = `${backupFileName}.gz`;
 
-    console.log(`Starting database backup: ${backupFileName}`);
+    console.log(`Starting database backup: ${gzipFileName}`);
 
     const backupProcess = spawn("sqlite3", [
       dbName,
@@ -31,10 +35,20 @@ const backupDatabase = async () => {
           new Error(`Backup process was terminated with signal ${signal}`)
         );
       } else {
-        console.log(
-          `Database "${dbName}" successfully backed up to ${backupFileName}`
-        );
-        resolve();
+        const gzip = createGzip();
+        const source = createReadStream(backupFileName);
+        const destination = createWriteStream(gzipFileName);
+
+        pipeline(source, gzip, destination, (err) => {
+          if (err) {
+            reject(new Error(`Failed to gzip backup file: ${err.message}`));
+          } else {
+            console.log(
+              `Database "${dbName}" successfully backed up to ${gzipFileName}`
+            );
+            resolve();
+          }
+        });
       }
     });
   });
